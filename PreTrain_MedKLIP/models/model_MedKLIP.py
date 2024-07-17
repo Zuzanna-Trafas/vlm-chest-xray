@@ -37,8 +37,8 @@ class MedKLIP(nn.Module):
             self.ana_book = self.ana_book.last_hidden_state[:,0,:]
             self.disease_book = bert_model(input_ids = disease_book['input_ids'],attention_mask = disease_book['attention_mask'])#(**encoded_inputs)
             self.disease_book = self.disease_book.last_hidden_state[:,0,:]
-        self.disease_embedding_layer = nn.Linear(768,256)
-        self.cl_fc = nn.Linear(256,768)
+        self.disease_embedding_layer = nn.Linear(768,config['d_model'])
+        self.cl_fc = nn.Linear(config['d_model'],768)
         
         self.disease_name = [
             'normal', 'clear', 'sharp', 'sharply', 'unremarkable', 'intact', 'stable', 'free',
@@ -63,14 +63,19 @@ class MedKLIP(nn.Module):
         
         self.keep_class_dim = [self.disease_name.index(i) for i in self.disease_name if i not in self.excluded_disease ]
         ''' visual backbone'''
-        self.resnet_dict = {"resnet18": models.resnet18(pretrained=False),
-                            "resnet50": models.resnet50(pretrained=False)}
-        resnet = self._get_res_basemodel(config['res_base_model'])
-        num_ftrs = int(resnet.fc.in_features/2)
-        self.res_features = nn.Sequential(*list(resnet.children())[:-3])
-        self.res_l1 = nn.Linear(num_ftrs, num_ftrs)
-        self.res_l2 = nn.Linear(num_ftrs, self.d_model)
-
+        self.is_resnet = config['res_base_model'] in ['resnet18','resnet50']
+        if self.is_resnet:
+            self.resnet_dict = {"resnet18": models.resnet18(pretrained=False),
+                                "resnet50": models.resnet50(pretrained=False)}
+            resnet = self._get_res_basemodel(config['res_base_model'])
+            num_ftrs = int(resnet.fc.in_features/2)
+            self.res_features = nn.Sequential(*list(resnet.children())[:-3])
+            self.res_l1 = nn.Linear(num_ftrs, num_ftrs)
+            self.res_l2 = nn.Linear(num_ftrs, self.d_model)
+        else:
+            self.encoder = AutoModel.from_pretrained(config['res_base_model'])
+            for param in self.encoder.parameters():
+                param.requires_grad = False
 
         ###################################
         ''' Query Decoder'''
@@ -137,6 +142,13 @@ class MedKLIP(nn.Module):
         x = self.res_l2(x)
         out_emb = rearrange(x,'(b n) d -> b n d',b=batch_size)
         return out_emb
+    
+    def vit_encoder_forward(self, images):
+        # Extract features using DINO encoder
+        x = self.encoder(images)
+        x = x.last_hidden_state  
+        # x = self.dino_projector(x)  # Project to the correct dimension
+        return x
 
     def forward(self, images,labels,smaple_index = None, is_train = True, no_cl= False, exclude_class= False):
 
@@ -144,16 +156,20 @@ class MedKLIP(nn.Module):
         B = images.shape[0]
         device = images.device
         ''' Visual Backbone '''
-        x = self.image_encoder(images) #batch_size,patch_num,dim
-
-        
-        
-        
-
+        if self.is_resnet:
+            x = self.image_encoder(images) #batch_size,patch_num,dim
+            # print(x.shape) torch.Size([48, 196, 256])
+        else:
+            x = self.vit_encoder_forward(images)
+            # print(x.shape)
+            # 785, 768
+    
         features = x.transpose(0,1) #patch_num b dim
+        # print(features.shape)
         #query_embed = self.query_embed.weight.unsqueeze(1).repeat(1, B, 1) # query_number, batch, dim
         query_embed = self.disease_embedding_layer(self.disease_book)
         query_embed = query_embed.unsqueeze(1).repeat(1, B, 1)
+        # print(query_embed.shape)
         features,ws = self.decoder(query_embed, features, 
             memory_key_padding_mask=None, pos=None, query_pos=None)
         out = self.dropout_feas(features)

@@ -1,16 +1,21 @@
 import json
 from torch.utils.data import DataLoader
 import PIL
+import os
 from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd
 from torchvision import transforms
 from PIL import Image
 import random
+# import h5py
 from dataset.randaugment import RandomAugment
+from transformers import ViTImageProcessor
+
 
 class MedKLIP_Dataset(Dataset):
-    def __init__(self, csv_path, np_path , mode = 'train'):
+    def __init__(self, csv_path, np_path , config, mode = 'train'):
+
         self.ann = json.load(open(csv_path,'r'))
         self.img_path_list = list(self.ann)
         self.anaomy_list = [
@@ -34,6 +39,9 @@ class MedKLIP_Dataset(Dataset):
         ]
         self.rad_graph_results = np.load(np_path)
         normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
+        self.is_resnet = config['res_base_model'] in ['resnet18','resnet50']
+        self.config = config
         if mode == 'train':
             self.transform = transforms.Compose([                        
                 transforms.RandomResizedCrop(224,scale=(0.2, 1.0), interpolation=Image.BICUBIC),
@@ -52,21 +60,34 @@ class MedKLIP_Dataset(Dataset):
             transforms.ToTensor(),
             normalize,
             ])   
+
     
     def __getitem__(self, index):
-        img_path = self.img_path_list[index]
-        class_label = self.rad_graph_results[self.ann[img_path]["labels_id"],:,:] # (51, 75)
-        labels = np.zeros(class_label.shape[-1]) -1
-        labels, index_list = self.triplet_extraction(class_label)
-        index_list = np.array(index_list)
-                       
-        img = PIL.Image.open(img_path).convert('RGB')   
-        image = self.transform(img)
+        while index < len(self.img_path_list):
+            img_path = self.img_path_list[index]
+            
+            if not os.path.exists(img_path):
+                print(f"Warning: Image path {img_path} does not exist. Skipping index {index}.")
+                index += 1
+                continue
+            
+            class_label = self.rad_graph_results[self.ann[img_path]["labels_id"],:,:]  # (51, 75)
+            labels = np.zeros(class_label.shape[-1]) - 1
+            labels, index_list = self.triplet_extraction(class_label)
+            index_list = np.array(index_list)
 
-        return {
-            "image": image,
-            "label": labels,
-            'index': index_list
+            img = PIL.Image.open(img_path).convert('RGB')   
+
+            if self.is_resnet:
+                image = self.transform(img)
+            else:
+                processor = ViTImageProcessor.from_pretrained(self.config['res_base_model'])
+                image = processor(images=img, return_tensors="pt")['pixel_values'][0]
+
+            return {
+                "image": image,
+                "label": labels,
+                'index': index_list
             }
     
     def triplet_extraction(self, class_label):
