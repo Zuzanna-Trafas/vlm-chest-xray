@@ -1,6 +1,6 @@
 import argparse
 import os
-import ruamel_yaml as yaml
+import ruamel.yaml as yaml
 import numpy as np
 import random
 import time
@@ -17,9 +17,10 @@ from tensorboardX import SummaryWriter
 import utils
 from models.resnet import ModelRes_ft
 from test_res_ft import test
-from dataset.dataset_siim_acr import SIIM_ACR_Dataset
+from dataset.dataset_mimic import MIMIC_Dataset
 from scheduler import create_scheduler
 from optim import create_optimizer
+import wandb
 
 
 def train(model, data_loader, optimizer, criterion, epoch, warmup_steps, device, scheduler, args,config,writer):
@@ -49,6 +50,7 @@ def train(model, data_loader, optimizer, criterion, epoch, warmup_steps, device,
         loss.backward()
         optimizer.step()    
         writer.add_scalar('loss/loss', loss, scalar_step)
+        wandb.log({"train/loss": loss.item(), "step": scalar_step})
         scalar_step += 1
 
         metric_logger.update(loss=loss.item())
@@ -75,12 +77,14 @@ def valid(model, data_loader, criterion,epoch,device,config,writer):
             val_loss = criterion(pred_class,label)
             val_losses.append(val_loss.item())
             writer.add_scalar('val_loss/loss', val_loss, val_scalar_step)
+            wandb.log({"val/loss": val_loss.item(), "val_step": val_scalar_step})
             val_scalar_step += 1
     avg_val_loss = np.array(val_losses).mean()
     return avg_val_loss
 
 
 def main(args, config):
+    wandb.init(project="MedKLIP_FineTune", config=config)
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Total CUDA devices: ", torch.cuda.device_count()) 
     torch.set_default_tensor_type('torch.FloatTensor')
@@ -91,7 +95,7 @@ def main(args, config):
 
     #### Dataset #### 
     print("Creating dataset")
-    train_dataset = SIIM_ACR_Dataset(config['train_file']) 
+    train_dataset = MIMIC_Dataset(config['images_file'], config['labels_file']) 
     train_dataloader = DataLoader(
             train_dataset,
             batch_size=config['batch_size'],
@@ -103,7 +107,7 @@ def main(args, config):
             drop_last=True,
         )            
     
-    val_dataset = SIIM_ACR_Dataset(config['valid_file'],is_train = False) 
+    val_dataset = MIMIC_Dataset(config['images_file'], config['labels_file'], is_train=False) 
     val_dataloader =DataLoader(
             val_dataset,
             batch_size=config['batch_size'],
@@ -115,7 +119,7 @@ def main(args, config):
             drop_last=False,
         )
 
-    model = ModelRes_ft(res_base_model='resnet50',out_size=1)
+    model = ModelRes_ft(res_base_model='resnet50',out_size=4)
     model = nn.DataParallel(model, device_ids = [i for i in range(torch.cuda.device_count())])
     model = model.to(device) 
 
@@ -158,9 +162,12 @@ def main(args, config):
         
         writer.add_scalar('loss/train_loss_epoch', float(train_loss_epoch), epoch)
         writer.add_scalar('loss/leaning_rate',  lr_scheduler._get_lr(epoch)[0] , epoch)
+        wandb.log({"train/loss_epoch": float(train_loss_epoch), "epoch": epoch})  # Log epoch train loss to wandb
+        wandb.log({"train/learning_rate": lr_scheduler._get_lr(epoch)[0], "epoch": epoch})  # Log learning rate to wandb
 
         val_loss = valid(model, val_dataloader, criterion,epoch,device,config,writer)
         writer.add_scalar('loss/val_loss_epoch', val_loss, epoch)
+        wandb.log({"val/loss_epoch": val_loss, "epoch": epoch}) 
 
         if utils.is_main_process():  
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
@@ -192,6 +199,7 @@ def main(args, config):
             test_auc = test(args,config)
             with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
                 f.write('The average AUROC is {AUROC_avg:.4f}'.format(AUROC_avg=test_auc) + "\n")
+            wandb.log({"test/AUROC_avg": test_auc, "epoch": epoch})
         
         if epoch % 20 == 1 and epoch>1:
             save_obj = {
@@ -219,7 +227,8 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=str,default='1', help='gpu')
     args = parser.parse_args()
 
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
+    yaml = yaml.YAML(typ='rt')
+    config = yaml.load(open(args.config, 'r'))
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 

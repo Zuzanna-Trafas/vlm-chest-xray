@@ -7,7 +7,7 @@
 
 import argparse
 import os
-import ruamel_yaml as yaml
+import ruamel.yaml as yaml
 import numpy as np
 import random
 import torch
@@ -17,8 +17,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score,precision_recall_curve,accuracy_score
 from models.resnet import ModelRes_ft
 
-from dataset.dataset_siim_acr import SIIM_ACR_Dataset
-
+from dataset.dataset_mimic import MIMIC_Dataset
 
 
 def compute_AUCs(gt, pred, n_class):
@@ -44,7 +43,7 @@ def test(args,config):
     print("Total CUDA devices: ", torch.cuda.device_count()) 
     torch.set_default_tensor_type('torch.FloatTensor')
 
-    test_dataset =  SIIM_ACR_Dataset(config['test_file'],is_train=False) 
+    test_dataset =  MIMIC_Dataset(config['images_file'], config['labels_file'], is_train=False) 
     test_dataloader = DataLoader(
             test_dataset,
             batch_size=config['test_batch_size'],

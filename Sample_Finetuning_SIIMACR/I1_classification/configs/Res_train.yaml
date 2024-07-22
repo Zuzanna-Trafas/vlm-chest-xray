@@ -1,6 +1,5 @@
-train_file: 'Path/To/Train.csv'
-valid_file: 'Path/To/Valid.csv'
-test_file: 'Path/To/test.csv'
+images_file: /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/data_file/debug.json
+labels_file: /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/data_file/debug_labels.csv
 
 image_res: 224
 batch_size: 64
