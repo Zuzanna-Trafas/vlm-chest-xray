@@ -11,6 +11,7 @@ import random
 # import h5py
 from dataset.randaugment import RandomAugment
 from transformers import ViTImageProcessor
+import timm
 
 
 class MedKLIP_Dataset(Dataset):
@@ -40,7 +41,12 @@ class MedKLIP_Dataset(Dataset):
         self.rad_graph_results = np.load(np_path)
         normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
+        if config['res_base_model'] == 'sam':
+            model = timm.models.create_model('timm/samvit_base_patch16.sa1b', pretrained=True, num_classes=0)
+            data_config = timm.data.resolve_model_data_config(model)
+            self.timm_transform = timm.data.create_transform(**data_config, is_training=True)
         self.is_resnet = config['res_base_model'] in ['resnet18','resnet50']
+        self.model_type = config['res_base_model']
         self.config = config
         if mode == 'train':
             self.transform = transforms.Compose([                        
@@ -80,6 +86,8 @@ class MedKLIP_Dataset(Dataset):
 
             if self.is_resnet:
                 image = self.transform(img)
+            elif self.model_type == 'sam':
+                image = self.timm_transform(img)
             else:
                 processor = ViTImageProcessor.from_pretrained(self.config['res_base_model'])
                 image = processor(images=img, return_tensors="pt")['pixel_values'][0]

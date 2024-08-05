@@ -10,6 +10,7 @@ from .transformer import *
 import torchvision.models as models
 from einops import rearrange
 from transformers import AutoModel
+from timm.models import create_model
 '''
 args.N
 args.d_model
@@ -64,6 +65,7 @@ class MedKLIP(nn.Module):
         self.keep_class_dim = [self.disease_name.index(i) for i in self.disease_name if i not in self.excluded_disease ]
         ''' visual backbone'''
         self.is_resnet = config['res_base_model'] in ['resnet18','resnet50']
+        self.model_type = config['res_base_model'] 
         if self.is_resnet:
             self.resnet_dict = {"resnet18": models.resnet18(pretrained=False),
                                 "resnet50": models.resnet50(pretrained=False)}
@@ -72,8 +74,13 @@ class MedKLIP(nn.Module):
             self.res_features = nn.Sequential(*list(resnet.children())[:-3])
             self.res_l1 = nn.Linear(num_ftrs, num_ftrs)
             self.res_l2 = nn.Linear(num_ftrs, self.d_model)
-        else:
+        elif config['res_base_model'] == 'dino_vit':
             self.encoder = AutoModel.from_pretrained(config['res_base_model'])
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+
+        elif config['res_base_model'] == 'sam':
+            self.encoder = create_model('timm/samvit_base_patch16.sa1b', pretrained=True, num_classes=0)
             for param in self.encoder.parameters():
                 param.requires_grad = False
 
@@ -159,6 +166,16 @@ class MedKLIP(nn.Module):
         if self.is_resnet:
             x = self.image_encoder(images) #batch_size,patch_num,dim
             # print(x.shape) torch.Size([48, 196, 256])
+        elif self.model_type == 'sam':
+            x = self.encoder.forward_features(images)
+            # print(x.shape) torch.Size([4, 256, 64, 64])
+            # Flatten the spatial dimensions: [B, C, H, W] -> [B, C, H*W]
+            B, C, H, W = x.shape
+            x = x.view(B, C, H * W)  # Shape: [4, 256, 4096]
+
+            # Permute to [B, H*W, C] -> [4, 4096, 256]
+            x = x.permute(0, 2, 1)  # Shape: [4, 4096, 256]
+
         else:
             x = self.vit_encoder_forward(images)
             # print(x.shape)

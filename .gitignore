@@ -173,3 +173,5 @@ PreTrain_MedKLIP/optim/*
 PreTrain_MedKLIP/scheduler/*
 PreTrain_MedKLIP/output/*
 Sample_Finetuning_SIIMACR/I1_classification/data_file/*
+
+*.pyc

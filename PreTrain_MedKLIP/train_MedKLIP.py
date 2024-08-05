@@ -105,7 +105,7 @@ def valid(model, data_loader, epoch, device,config,writer):
     return avg_val_loss
 
 def main(args, config):
-    wandb.init(project=f'MedKLIP_DINO', config=config)
+    wandb.init(project=f'MedKLIP_pretrain', config=config)
 
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Total CUDA devices: ", torch.cuda.device_count()) 

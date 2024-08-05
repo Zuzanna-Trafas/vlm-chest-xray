@@ -1,0 +1,1 @@
+python train_MedKLIP.py --config ~/vlm-chest-xray/PreTrain_MedKLIP/configs/SAM_Pretrain_MedKLIP.yaml --output_dir ~/vlm-chest-xray/PreTrain_MedKLIP/output/SAM
