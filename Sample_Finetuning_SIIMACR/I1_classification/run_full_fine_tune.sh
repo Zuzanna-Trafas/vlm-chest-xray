@@ -1,0 +1,1 @@
+python train_medklip.py --config /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/configs/Res_train.yaml --checkpoint /home/zuzanna/vlm-chest-xray/checkpoints/checkpoint_final.pth --output_dir /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/output/full
