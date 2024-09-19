@@ -1,0 +1,1 @@
+python train_deformable.py --config /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/configs/Res_train.yaml --checkpoint ~/vlm-chest-xray/PreTrain_MedKLIP/output/PreTrain_MedKLIP --output_dir /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/output/deformable

@@ -1,15 +1,24 @@
 images_file: /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/data_file/debug.json
 labels_file: /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/data_file/debug_labels.csv
+disease_book: /home/zuzanna/vlm-chest-xray/Sample_Finetuning_SIIMACR/I1_classification/data_file/observation explanation.json
+text_encoder: 'emilyalsentzer/Bio_ClinicalBERT'
 
 image_res: 224
-batch_size: 64
+batch_size: 48
 test_batch_size: 64
-num_classes: 1
+num_classes: 4
+d_model: 256
 temp: 0.07
 mlm_probability: 0.15
 queue_size: 8192
 momentum: 0.995
 alpha: 0.4
+res_base_model: 'resnet50'
+N: 4
+H: 4 
+dropout: 0.1
+attribute_set_size: 2
+position_embedding: 'sine'
 
 optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.02}
 schedular: {sched: cosine, lr: 1e-5, epochs: 100, min_lr: 1e-5, decay_rate: 1, warmup_lr: 1e-5, warmup_epochs: 20, cooldown_epochs: 0}

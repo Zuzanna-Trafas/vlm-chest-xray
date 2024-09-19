@@ -24,6 +24,7 @@ from scheduler import create_scheduler
 from optim import create_optimizer
 from dataset.dataset import MedKLIP_Dataset
 from models.model_MedKLIP import MedKLIP
+from models.deformable_medklip import Deformable_MedKLIP
 from models.tokenization_bert import BertTokenizer
 
 
@@ -157,7 +158,10 @@ def main(args, config):
     ana_book_tokenizer = get_tokenizer(tokenizer,ana_book).to(device)
     disease_book_tokenizer = get_tokenizer(tokenizer,disease_book).to(device)
     print("Creating model")
-    model = MedKLIP(config,ana_book_tokenizer, disease_book_tokenizer, mode = 'train')
+    if config['deformable']:
+        model = Deformable_MedKLIP(config,ana_book_tokenizer, disease_book_tokenizer, mode = 'train')
+    else:
+        model = MedKLIP(config,ana_book_tokenizer, disease_book_tokenizer, mode = 'train')
     model = nn.DataParallel(model, device_ids = [i for i in range(torch.cuda.device_count())])
     model = model.to(device)  
 

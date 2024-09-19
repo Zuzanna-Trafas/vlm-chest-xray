@@ -1,0 +1,1 @@
+python train_MedKLIP.py --config /home/zuzanna/vlm-chest-xray/PreTrain_MedKLIP/configs/Deformable_Pretrain_MedKLIP.yaml --output_dir ~/vlm-chest-xray/PreTrain_MedKLIP/output/PreTrain_MedKLIP 

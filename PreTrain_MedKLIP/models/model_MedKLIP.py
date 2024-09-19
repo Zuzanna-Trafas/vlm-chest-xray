@@ -7,6 +7,9 @@ import numpy as np
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
 from .transformer import *
+from .deformable_transformer import *
+from .util.misc import NestedTensor
+from .position_encoding import PositionEmbeddingSine
 import torchvision.models as models
 from einops import rearrange
 from transformers import AutoModel
@@ -30,6 +33,7 @@ class MedKLIP(nn.Module):
         super(MedKLIP, self).__init__()
 
         self.mode = mode
+        self.config = config
         self.d_model = config['d_model']
         # ''' book embedding'''
         with torch.no_grad():
@@ -93,7 +97,8 @@ class MedKLIP(nn.Module):
                                         0.1, 'relu',normalize_before=True)
         decoder_norm = nn.LayerNorm(self.d_model)
         self.decoder = TransformerDecoder(decoder_layer, config['N'] , decoder_norm,
-                                  return_intermediate=False)
+                                return_intermediate=False)
+            
 
         # Learnable Queries
         #self.query_embed = nn.Embedding(config['num_queries'] ,self.d_model)
@@ -186,9 +191,15 @@ class MedKLIP(nn.Module):
         #query_embed = self.query_embed.weight.unsqueeze(1).repeat(1, B, 1) # query_number, batch, dim
         query_embed = self.disease_embedding_layer(self.disease_book)
         query_embed = query_embed.unsqueeze(1).repeat(1, B, 1)
-        # print(query_embed.shape)
+
+
         features,ws = self.decoder(query_embed, features, 
-            memory_key_padding_mask=None, pos=None, query_pos=None)
+        memory_key_padding_mask=None, pos=None, query_pos=None)
+
+        # print("BBBBBBBBBBBBBBBBBBBBBB")
+        # print(features.shape)
+        # torch.Size([75, 48, 256])
+
         out = self.dropout_feas(features)
         if is_train == True and no_cl == False:
             anatomy_query = self.ana_book[smaple_index,:] # batch, Q , position_num ,dim
