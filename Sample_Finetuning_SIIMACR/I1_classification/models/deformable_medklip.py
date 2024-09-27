@@ -87,10 +87,10 @@ class Deformable_MedKLIP(nn.Module):
         self.dropout_feas = nn.Dropout(config['dropout'] )
 
         # Attribute classifier
-        self.cls_classifier = nn.Linear(self.d_model,config['num_classes'])
+        # self.cls_classifier = nn.Linear(self.d_model,config['num_classes'])
 
         # # Class classifier
-        # self.cls_classifier = nn.Linear(self.d_model,args.num_classes)
+        self.cls_classifier = nn.Linear(self.d_model,config['num_classes'])
 
         self.apply(self._init_weights)
 
@@ -131,13 +131,7 @@ class Deformable_MedKLIP(nn.Module):
         query_embed = self.disease_embedding_layer(self.disease_book)
         query_embed = query_embed.unsqueeze(1).repeat(1, B, 1)
 
-        # print("AAAAAAAAAAAAAAAAAAAAAA")
-        # print(query_embed.shape)
-
         features, _, _, _, _ = self.transformer(srcs,masks,pos,query_embed)
-        # torch.Size([48, 75, 256])
-        # print("BBBBBBBBBBBBBBBBBBBBBB")
-        # print(features.shape)
 
         features = features.permute(1, 0, 2)
         

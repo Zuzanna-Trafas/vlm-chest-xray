@@ -1,1 +1,1 @@
-python train_MedKLIP.py --config ~/vlm-chest-xray/PreTrain_MedKLIP/configs/Pretrain_MedKLIP.yaml --output_dir ~/vlm-chest-xray/PreTrain_MedKLIP/output/PreTrain_MedKLIP 
+python train_MedKLIP.py --config ~/vlm-chest-xray/PreTrain_MedKLIP/configs/Pretrain_MedKLIP.yaml --output_dir ~/vlm-chest-xray/PreTrain_MedKLIP/output/baseline 

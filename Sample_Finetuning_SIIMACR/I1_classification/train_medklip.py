@@ -11,16 +11,31 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from sklearn.metrics import roc_auc_score,precision_recall_curve,accuracy_score
 import torch.backends.cudnn as cudnn
 from tensorboardX import SummaryWriter
 import utils
 from models.model_MedKLIP import MedKLIP
 from models.tokenization_bert import BertTokenizer
 from dataset.dataset_mimic import MIMIC_Dataset
+from dataset.dataset_rsna import RSNA_Dataset
 from scheduler import create_scheduler
 from optim import create_optimizer
 import wandb
 
+def compute_AUCs(gt, pred, n_class):
+    AUROCs = []
+    gt_np = gt.cpu().numpy()
+    pred_np = pred.cpu().numpy()
+    
+    # Handle single class scenario
+    if n_class == 1:
+        AUROCs.append(roc_auc_score(gt_np, pred_np))
+    else:
+        for i in range(n_class):
+            AUROCs.append(roc_auc_score(gt_np[:, i], pred_np[:, i]))
+    
+    return AUROCs
 
 def get_tokenizer(tokenizer,target_text):
     
@@ -74,19 +89,42 @@ def valid(model, data_loader, criterion,epoch,device,config,writer):
     model.eval()
     val_scalar_step = epoch*len(data_loader)
     val_losses = []
+
+    gt = torch.FloatTensor().cuda()  # assuming multi-class or binary classification
+    pred = torch.FloatTensor().cuda()
     for i, sample in enumerate(data_loader):
         image = sample['image']
         label = sample['label'].float().to(device)
+        gt = torch.cat((gt, label), 0)
         input_image = image.to(device,non_blocking=True)  
         with torch.no_grad():
             pred_class = model(input_image)[0]
+            pred = torch.cat((pred, pred_class), 0)
             val_loss = criterion(pred_class,label)
             val_losses.append(val_loss.item())
             writer.add_scalar('val_loss/loss', val_loss, val_scalar_step)
             wandb.log({"val/loss": val_loss.item(), "val_step": val_scalar_step})
             val_scalar_step += 1
+    # print(gt.shape, pred.shape)
     avg_val_loss = np.array(val_losses).mean()
+    AUROCs = compute_AUCs(gt, pred,config['num_classes'])
+    AUROC_avg = np.array(AUROCs).mean()
+    wandb.log({"val/AUROC_avg": AUROC_avg, "epoch": epoch})  # Log epoch train loss to wandb
+    gt_np = gt[:, 0].cpu().numpy()
+    pred_np = pred[:, 0].cpu().numpy()            
+    precision, recall, thresholds = precision_recall_curve(gt_np, pred_np)
+    wandb.log({"val/precision": precision, "epoch": epoch})  # Log epoch train loss to wandb
+    wandb.log({"val/recall": recall, "epoch": epoch})  # Log epoch train loss to wandb
+    numerator = 2 * recall * precision
+    denom = recall + precision
+    f1_scores = np.divide(numerator, denom, out=np.zeros_like(denom), where=(denom!=0))
+    max_f1 = np.max(f1_scores)
+    wandb.log({"val/max_f1": max_f1, "epoch": epoch})  # Log epoch train loss to wandb
+    max_f1_thresh = thresholds[np.argmax(f1_scores)]
+    accuracy = accuracy_score(gt_np, pred_np>max_f1_thresh)
+    wandb.log({"val/accuracy": accuracy, "epoch": epoch})  # Log epoch train loss to wandb
     return avg_val_loss
+
 
 
 def main(args, config):
@@ -101,7 +139,10 @@ def main(args, config):
 
     #### Dataset #### 
     print("Creating dataset")
-    train_dataset = MIMIC_Dataset(config['images_file'], config['labels_file']) 
+    if config['dataset'] == 'RSNA':
+        train_dataset = RSNA_Dataset(is_train=True)
+    else:
+        train_dataset = MIMIC_Dataset(config['images_file'], config['labels_file']) 
     train_dataloader = DataLoader(
             train_dataset,
             batch_size=config['batch_size'],
@@ -113,7 +154,10 @@ def main(args, config):
             drop_last=True,
         )            
     
-    val_dataset = MIMIC_Dataset(config['images_file'], config['labels_file'], is_train=False) 
+    if config['dataset'] == 'RSNA':
+        val_dataset = RSNA_Dataset(is_train=False)
+    else:
+        val_dataset = MIMIC_Dataset(config['images_file'], config['labels_file'], is_train=False) 
     val_dataloader =DataLoader(
             val_dataset,
             batch_size=config['batch_size'],
