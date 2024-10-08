@@ -129,6 +129,9 @@ class MedKLIP(nn.Module):
         query_embed = query_embed.unsqueeze(1).repeat(1, B, 1)
         features,ws = self.decoder(query_embed, features, 
             memory_key_padding_mask=None, pos=None, query_pos=None)
+        
+        # print(f"Features shape after transformer: {features.shape}")
+        # Features shape after transformer: torch.Size([75, 2, 256])
         out = self.dropout_feas(features)
         
         

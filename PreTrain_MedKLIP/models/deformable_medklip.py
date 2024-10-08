@@ -30,12 +30,13 @@ args.attribute_set_size
 
 class Deformable_MedKLIP(nn.Module):
 
-    def __init__(self, config, ana_book, disease_book, mode='train'):
+    def __init__(self, config, ana_book, disease_book, mode='train', num_feature_levels=4):
         super(Deformable_MedKLIP, self).__init__()
 
         self.mode = mode
         self.config = config
         self.d_model = config['d_model']
+        self.num_feature_levels = num_feature_levels
         # ''' book embedding'''
         with torch.no_grad():
             bert_model = self._get_bert_basemodel(config['text_encoder'],freeze_layers = None).to(ana_book['input_ids'].device)
@@ -70,12 +71,21 @@ class Deformable_MedKLIP(nn.Module):
         self.keep_class_dim = [self.disease_name.index(i) for i in self.disease_name if i not in self.excluded_disease ]
         ''' visual backbone'''
         self.backbone = build_backbone(config)
-        self.input_proj = nn.ModuleList([
-                nn.Sequential(
-                    nn.Conv2d(self.backbone.num_channels[0], config['d_model'], kernel_size=1),
-                    nn.GroupNorm(32, config['d_model']),
-                )])
-
+        num_backbone_outs = len(self.backbone.strides)
+        input_proj_list = []
+        for _ in range(num_backbone_outs):
+            in_channels = self.backbone.num_channels[_]
+            input_proj_list.append(nn.Sequential(
+                nn.Conv2d(in_channels, config['d_model'], kernel_size=1),
+                nn.GroupNorm(32, config['d_model']),
+            ))
+        for _ in range(num_feature_levels - num_backbone_outs):
+            input_proj_list.append(nn.Sequential(
+                nn.Conv2d(in_channels, config['d_model'], kernel_size=3, stride=2, padding=1),
+                nn.GroupNorm(32, config['d_model']),
+            ))
+            in_channels = config['d_model']
+        self.input_proj = nn.ModuleList(input_proj_list)
         ###################################
         ''' Query Decoder'''
         ###################################
@@ -124,6 +134,19 @@ class Deformable_MedKLIP(nn.Module):
             srcs.append(self.input_proj[l](src))
             masks.append(mask)
             assert mask is not None
+        if self.num_feature_levels > len(srcs):
+            _len_srcs = len(srcs)
+            for l in range(_len_srcs, self.num_feature_levels):
+                if l == _len_srcs:
+                    src = self.input_proj[l](features[-1].tensors)
+                else:
+                    src = self.input_proj[l](srcs[-1])
+                m = samples.mask
+                mask = F.interpolate(m[None].float(), size=src.shape[-2:]).to(torch.bool)[0]
+                pos_l = self.backbone[1](NestedTensor(src, mask)).to(src.dtype)
+                srcs.append(src)
+                masks.append(mask)
+                pos.append(pos_l)
 
         # features = x.transpose(0,1) #patch_num b dim
         # print(features.shape)
@@ -131,13 +154,7 @@ class Deformable_MedKLIP(nn.Module):
         query_embed = self.disease_embedding_layer(self.disease_book)
         query_embed = query_embed.unsqueeze(1).repeat(1, B, 1)
 
-        # print("AAAAAAAAAAAAAAAAAAAAAA")
-        # print(query_embed.shape)
-
         features, _, _, _, _ = self.transformer(srcs,masks,pos,query_embed)
-        # torch.Size([48, 75, 256])
-        # print("BBBBBBBBBBBBBBBBBBBBBB")
-        # print(features.shape)
 
         features = features.permute(1, 0, 2)
         

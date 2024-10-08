@@ -24,6 +24,17 @@ from optim import create_optimizer
 import wandb
 
 
+def check_transformer_gradients(model):
+    print("\nGradient flow through transformer layers:\n")
+    for name, param in model.named_parameters():
+        if "transformer" in name:  # Check for transformer layers
+            if param.grad is None:
+                print(f"Layer: {name} | No gradient")
+            else:
+                grad_mean = param.grad.mean().item()
+                grad_norm = param.grad.norm().item()
+                print(f"Layer: {name} | Mean Grad: {grad_mean:.6f} | Grad Norm: {grad_norm:.6f}")
+
 def compute_AUCs(gt, pred, n_class):
     AUROCs = []
     gt_np = gt.cpu().numpy()
@@ -67,9 +78,25 @@ def train(model, data_loader, optimizer, criterion, epoch, warmup_steps, device,
         optimizer.zero_grad()
         pred_class = model(input_image) #batch_size,num_class
 
-
+        if config['num_classes'] == 1:
+            label = label.unsqueeze(1)
         loss = criterion(pred_class,label)
         loss.backward()
+        # check_transformer_gradients(model)
+        # print(model.module.query_embed.grad)
+        # for name, param in model.named_parameters():
+        #     if param.grad is None:
+        #         print(f"No gradient for {name}")
+        # for name, param in model.named_parameters():
+        #     if param.grad is not None:
+        #         print(f"{name} | Mean Grad: {param.grad.mean().item():.6f} | Max Grad: {param.grad.max().item():.6f}")
+
+            # Log gradients after each epoch
+        # for name, param in model.named_parameters():
+        #     if param.grad is not None:
+        #         # Log the histogram of gradients
+        #         wandb.log({f"gradients/{name}": wandb.Histogram(param.grad.cpu().data.numpy())})
+
         optimizer.step()    
         writer.add_scalar('loss/loss', loss, scalar_step)
         wandb.log({"train/loss": loss.item(), "step": scalar_step})
@@ -88,6 +115,7 @@ def train(model, data_loader, optimizer, criterion, epoch, warmup_steps, device,
 
 def valid(model, data_loader, criterion,epoch,device,config,writer):
     model.eval()
+
     val_scalar_step = epoch*len(data_loader)
     val_losses = []
 
@@ -101,6 +129,8 @@ def valid(model, data_loader, criterion,epoch,device,config,writer):
         with torch.no_grad():
             pred_class = model(input_image)
             pred = torch.cat((pred, pred_class), 0)
+            if config['num_classes'] == 1:
+                label = label.unsqueeze(1)
             val_loss = criterion(pred_class,label)
             val_losses.append(val_loss.item())
             writer.add_scalar('val_loss/loss', val_loss, val_scalar_step)
@@ -111,11 +141,18 @@ def valid(model, data_loader, criterion,epoch,device,config,writer):
     AUROCs = compute_AUCs(gt, pred,config['num_classes'])
     AUROC_avg = np.array(AUROCs).mean()
     wandb.log({"val/AUROC_avg": AUROC_avg, "epoch": epoch})  # Log epoch train loss to wandb
-    gt_np = gt[:, 0].cpu().numpy()
-    pred_np = pred[:, 0].cpu().numpy()            
+    # Check the shape of ground truth and predictions
+    if gt.ndim == 2 and gt.shape[1] > 1:  # If gt is 2D (multi-class or multi-label)
+        gt_np = gt[:, 0].cpu().numpy()  # Select the first class
+    else:  # 1D ground truth
+        gt_np = gt.cpu().numpy()
+
+    if pred.ndim == 2 and pred.shape[1] > 1:  # If pred is 2D (multi-class or multi-label)
+        pred_np = pred[:, 0].cpu().numpy()  # Select the first class
+    else:  # 1D predictions
+        pred_np = pred.cpu().numpy()    
+
     precision, recall, thresholds = precision_recall_curve(gt_np, pred_np)
-    wandb.log({"val/precision": precision, "epoch": epoch})  # Log epoch train loss to wandb
-    wandb.log({"val/recall": recall, "epoch": epoch})  # Log epoch train loss to wandb
     numerator = 2 * recall * precision
     denom = recall + precision
     f1_scores = np.divide(numerator, denom, out=np.zeros_like(denom), where=(denom!=0))

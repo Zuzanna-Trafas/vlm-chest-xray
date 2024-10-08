@@ -66,6 +66,8 @@ def train(model, data_loader, optimizer, criterion, epoch, warmup_steps, device,
         optimizer.zero_grad()
         pred_class = model(input_image)[0] #batch_size,num_class
 
+        if config['num_classes'] == 1:
+            label = label.unsqueeze(1)
 
         loss = criterion(pred_class,label)
         loss.backward()
@@ -99,6 +101,8 @@ def valid(model, data_loader, criterion,epoch,device,config,writer):
         input_image = image.to(device,non_blocking=True)  
         with torch.no_grad():
             pred_class = model(input_image)[0]
+            if config['num_classes'] == 1:
+                label = label.unsqueeze(1)
             pred = torch.cat((pred, pred_class), 0)
             val_loss = criterion(pred_class,label)
             val_losses.append(val_loss.item())
@@ -110,11 +114,18 @@ def valid(model, data_loader, criterion,epoch,device,config,writer):
     AUROCs = compute_AUCs(gt, pred,config['num_classes'])
     AUROC_avg = np.array(AUROCs).mean()
     wandb.log({"val/AUROC_avg": AUROC_avg, "epoch": epoch})  # Log epoch train loss to wandb
-    gt_np = gt[:, 0].cpu().numpy()
-    pred_np = pred[:, 0].cpu().numpy()            
+    # Check the shape of ground truth and predictions
+    if gt.ndim == 2 and gt.shape[1] > 1:  # If gt is 2D (multi-class or multi-label)
+        gt_np = gt[:, 0].cpu().numpy()  # Select the first class
+    else:  # 1D ground truth
+        gt_np = gt.cpu().numpy()
+
+    if pred.ndim == 2 and pred.shape[1] > 1:  # If pred is 2D (multi-class or multi-label)
+        pred_np = pred[:, 0].cpu().numpy()  # Select the first class
+    else:  # 1D predictions
+        pred_np = pred.cpu().numpy()              
     precision, recall, thresholds = precision_recall_curve(gt_np, pred_np)
-    wandb.log({"val/precision": precision, "epoch": epoch})  # Log epoch train loss to wandb
-    wandb.log({"val/recall": recall, "epoch": epoch})  # Log epoch train loss to wandb
+
     numerator = 2 * recall * precision
     denom = recall + precision
     f1_scores = np.divide(numerator, denom, out=np.zeros_like(denom), where=(denom!=0))

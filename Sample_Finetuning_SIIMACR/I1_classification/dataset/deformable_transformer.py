@@ -123,7 +123,7 @@ class DeformableTransformer(nn.Module):
         valid_ratio = torch.stack([valid_ratio_w, valid_ratio_h], -1)
         return valid_ratio
 
-    def forward(self, srcs, masks, pos_embeds, query_embed=None, tgt=None):
+    def forward(self, srcs, masks, pos_embeds, query_embed=None):
         assert self.two_stage or query_embed is not None
 
         # prepare input for encoder
@@ -170,13 +170,10 @@ class DeformableTransformer(nn.Module):
             pos_trans_out = self.pos_trans_norm(self.pos_trans(self.get_proposal_pos_embed(topk_coords_unact)))
             query_embed, tgt = torch.split(pos_trans_out, c, dim=2)
         else:
-            query_embed, tgt = torch.split(query_embed, c, dim=1)
-            query_embed = query_embed.unsqueeze(0).expand(bs, -1, -1)
-            tgt = tgt.unsqueeze(0).expand(bs, -1, -1)
-            # query_embed = query_embed.permute(1, 0, 2)  # Shape: [48, 75, 256]
-            # query_embed = query_embed.expand(bs, -1, -1)
-            # tgt = tgt.permute(1, 0, 2)  # Shape: [48, 75, 256]
-            # tgt = tgt.expand(bs, -1, -1)
+            # query_embed, tgt = torch.split(query_embed, c, dim=1)
+            query_embed = query_embed.permute(1, 0, 2)  # Shape: [48, 75, 256]
+            query_embed = query_embed.expand(bs, -1, -1)
+            tgt = query_embed.clone()
             reference_points = self.reference_points(query_embed).sigmoid()
             init_reference_out = reference_points
 

@@ -131,6 +131,6 @@ class Joiner(nn.Sequential):
 
 def build_backbone(args):
     position_embedding = build_position_encoding(args)
-    backbone = Backbone(args['res_base_model'], True, False, False)
+    backbone = Backbone(args['res_base_model'], True, True, False)
     model = Joiner(backbone, position_embedding)
     return model

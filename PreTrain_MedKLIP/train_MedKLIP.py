@@ -62,6 +62,12 @@ def train(model, data_loader, optimizer, epoch, warmup_steps, device, scheduler,
 
         loss,loss_ce,loss_cl = model(images,labels, index, is_train= True,no_cl = config['no_cl'],exclude_class = config['exclude_class'])
         loss.backward()
+
+        # for name, param in model.named_parameters():
+        #     if param.grad is not None:
+        #         # Log the histogram of gradients
+        #         wandb.log({f"gradients/{name}": wandb.Histogram(param.grad.cpu().data.numpy())})
+
         optimizer.step()  
 
         wandb.log({'train/loss': loss.item(), 'train/loss_ce': loss_ce.item(), 'train/loss_cl': loss_cl.item(), 'train/lr': scheduler._get_lr(epoch)[0]})  
@@ -165,6 +171,10 @@ def main(args, config):
     model = nn.DataParallel(model, device_ids = [i for i in range(torch.cuda.device_count())])
     model = model.to(device)  
 
+    if config['deformable'] and config['pretrained']:
+        checkpoint = torch.load('/home/zuzanna/r50_deformable_detr-checkpoint.pth', map_location='cpu')
+        transformer_weights = {k: v for k, v in checkpoint['model'].items() if 'transformer' in k or 'backbone' in k}
+        model.module.load_state_dict(transformer_weights, strict=False)
 
     arg_opt = utils.AttrDict(config['optimizer'])
     optimizer = create_optimizer(arg_opt, model)
